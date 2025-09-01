@@ -1,5 +1,4 @@
 // main.js — stable CDN + early overlay + visible errors
-// (Drop-in; keep your index.html and styles.css as-is.)
 
 // ------------ tiny inline error badge ------------
 const badge = document.createElement('div');
@@ -9,9 +8,9 @@ function showErr(e){ badge.textContent = '⚠️ ' + e; badge.style.opacity = '1
 window.addEventListener('error', (e)=>showErr(e.message || 'Script error'));
 window.addEventListener('unhandledrejection', (e)=>showErr((e.reason&&e.reason.message)||'Unhandled promise rejection'));
 
-// Unhide start overlay immediately so we always see a UI even if something fails later
-const overlay = document.getElementById('overlay'); // exists per your HTML
-if (overlay) overlay.hidden = false; // show “Play” panel ASAP
+// Unhide start overlay immediately
+const overlay = document.getElementById('overlay');
+if (overlay) overlay.hidden = false;
 
 // ------------ CDN imports ------------
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
@@ -19,10 +18,10 @@ import { EffectComposer } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examp
 import { RenderPass } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/postprocessing/UnrealBloomPass.js';
 
-// ------------ DOM hooks (match your index.html HUD/controls) ------------
-const timeEl = document.getElementById('time');    // ⏱ HUD
-const scoreEl = document.getElementById('score');  // 🏁 HUD
-const pauseBtn = document.getElementById('pause'); // pause button
+// ------------ DOM hooks ------------
+const timeEl = document.getElementById('time');
+const scoreEl = document.getElementById('score');
+const pauseBtn = document.getElementById('pause');
 const resumeBtn = document.getElementById('resume');
 const restartBtn = document.getElementById('restart');
 const gameover = document.getElementById('gameover');
