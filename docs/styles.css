@@ -131,3 +131,10 @@ body {
 .panel h1 { margin-top: 4px; }
 .panel .row { display: flex; gap: 12px; justify-content: center; margin-top: 12px; }
 .btn.big { padding: 10px 18px; font-size: 18px; }
+
+/* --- FORCE UI ABOVE CANVAS --- */
+#game { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: 0; }
+#ui   { position: fixed; inset: 0; z-index: 9999; display: block !important; }
+.hud, #stick, #actionBtn, #overlay, #gameover { z-index: 10000; position: relative; }
+/* Optional visual proof the UI is present: temporary border. Remove later. */
+.hud { outline: 1px solid rgba(255,255,255,0.2); }
