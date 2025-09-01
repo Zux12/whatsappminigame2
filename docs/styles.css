@@ -136,6 +136,7 @@ body {
 /* --- FORCE UI ABOVE CANVAS --- */
 #game { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: 0; }
 #ui   { position: fixed; inset: 0; z-index: 9999; display: block !important; }
-.hud, #stick, #actionBtn, #overlay, #gameover { z-index: 10000; position: relative; }
+.hud, #stick, #actionBtn, #overlay, #gameover { z-index: 10000; } /* keep their original positions */
+
 /* Optional visual proof the UI is present: temporary border. Remove later. */
 .hud { outline: 1px solid rgba(255,255,255,0.2); }
