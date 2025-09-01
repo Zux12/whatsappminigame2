@@ -82,7 +82,7 @@
     stamina: 1, // 0..1
     battery: 1, // 0..1
     lightOn: true,
-    radius: 5 // light radius in tiles (base)
+    radius: 9 // light radius in tiles (base)
   };
 
   // Monster (slower + farther)
@@ -252,7 +252,7 @@
 
     // Battery drains if lightOn
     if (player.lightOn && player.battery > 0) {
-      player.battery = Math.max(0, player.battery - 0.05 * dt);
+player.battery = Math.max(0, player.battery - 0.01 * dt);  // ← 5× slower
     }
     batteryEl.textContent = Math.round(player.battery * 100) + '%';
 
@@ -343,7 +343,7 @@
     // Darkness mask (brighter than before)
     ctx.save();
     ctx.globalCompositeOperation = 'source-over';
-    ctx.fillStyle = 'rgba(0,0,0,0.40)'; // was 0.80
+    ctx.fillStyle = 'rgba(0,0,0,0.25)'; // was 0.80
     ctx.fillRect(0, 0, W, H);
 
     // Cut light holes
@@ -351,14 +351,14 @@
 
     // Player light
     const baseR = player.radius * TILE * pixel;
-const lightR = Math.max(160, baseR * (0.8 + player.battery * 0.8));
+const lightR = Math.max(300, baseR * (1.0 + player.battery * 0.6));
 
     radialHole(player.x, player.y, lightR, 0.85);
 
     // Lamp lights
     for (const l of lamps) {
       if (!l.on) continue;
-      radialHole(l.x + 0.5, l.y + 0.5, 140, 1.0);
+radialHole(l.x + 0.5, l.y + 0.5, 260, 1.0);  // ← bigger lamp glow
     }
     ctx.restore();
 
