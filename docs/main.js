@@ -1,573 +1,248 @@
-// main.js (drop-in replacement)
-// ES module; imports Three + examples via CDN.
-// If you already have your own Three build, you can swap these imports later.
+// main.js — stable CDN + early overlay + visible errors
+// (Drop-in; keep your index.html and styles.css as-is.)
 
-import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
-import { EffectComposer } from 'https://unpkg.com/three@0.160.0/examples/jsm/postprocessing/EffectComposer.js';
-import { RenderPass } from 'https://unpkg.com/three@0.160.0/examples/jsm/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'https://unpkg.com/three@0.160.0/examples/jsm/postprocessing/UnrealBloomPass.js';
+// ------------ tiny inline error badge ------------
+const badge = document.createElement('div');
+badge.style.cssText = 'position:fixed;bottom:8px;left:8px;padding:6px 10px;border-radius:10px;background:#2b2b2b;color:#fff;font:12px/1.2 ui-sans-serif,system-ui;z-index:9999;opacity:.0;transition:opacity .2s';
+document.body.appendChild(badge);
+function showErr(e){ badge.textContent = '⚠️ ' + e; badge.style.opacity = '1'; console.error(e); }
+window.addEventListener('error', (e)=>showErr(e.message || 'Script error'));
+window.addEventListener('unhandledrejection', (e)=>showErr((e.reason&&e.reason.message)||'Unhandled promise rejection'));
 
-// ---------- DOM refs (match your index.html) ----------
-const timeEl = document.getElementById('time');
-const scoreEl = document.getElementById('score');
-const pauseBtn = document.getElementById('pause');
+// Unhide start overlay immediately so we always see a UI even if something fails later
+const overlay = document.getElementById('overlay'); // exists per your HTML
+if (overlay) overlay.hidden = false; // show “Play” panel ASAP :contentReference[oaicite:1]{index=1}
 
-const overlay = document.getElementById('overlay');
+// ------------ CDN imports ------------
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+import { EffectComposer } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/postprocessing/UnrealBloomPass.js';
+
+// ------------ DOM hooks (match your index.html HUD/controls) ------------
+const timeEl = document.getElementById('time');    // ⏱ HUD :contentReference[oaicite:2]{index=2}
+const scoreEl = document.getElementById('score');  // 🏁 HUD :contentReference[oaicite:3]{index=3}
+const pauseBtn = document.getElementById('pause'); // pause button :contentReference[oaicite:4]{index=4}
 const resumeBtn = document.getElementById('resume');
 const restartBtn = document.getElementById('restart');
-
 const gameover = document.getElementById('gameover');
 const againBtn = document.getElementById('again');
 const finalTime = document.getElementById('finalTime');
 const finalScore = document.getElementById('finalScore');
 
-// ---------- Renderer / Scene / Camera ----------
+// ------------ renderer / scene / camera ------------
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
 renderer.setClearColor(0x0a0f18, 1);
 document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-
-// Camera: behind & slightly above player, facing forward down corridor
-const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.02, 1000);
+const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.02, 1000);
 camera.position.set(0, 0.9, 2.2);
 scene.add(camera);
 
-// Basic hemisphere + directional lights for physical cues (glow handled by bloom)
-const hemi = new THREE.HemisphereLight(0x96c6ff, 0x0b1220, 0.5);
-scene.add(hemi);
+// lights
+scene.add(new THREE.HemisphereLight(0x96c6ff, 0x0b1220, 0.5));
 const dir = new THREE.DirectionalLight(0xffffff, 0.7);
-dir.position.set(1, 2, 1);
-scene.add(dir);
+dir.position.set(1,2,1); scene.add(dir);
 
-// ---------- Postprocessing (Bloom for neon edges) ----------
+// post FX
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
-const bloomPass = new UnrealBloomPass(
-  new THREE.Vector2(window.innerWidth, window.innerHeight),
-  0.8,   // strength
-  0.9,   // radius
-  0.01   // threshold
-);
+const bloomPass = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.8, 0.9, 0.01);
 composer.addPass(bloomPass);
 
-// ---------- Corridor ----------
-function makeCorridor() {
-  // Long tunnel: we’ll cheat with 2 segments that recycle
-  const group = new THREE.Group();
-  const length = 30;
-  const width = 6;
-  const height = 3.6;
+// ------------ corridor ------------
+function makeCorridor(){
+  const g = new THREE.Group();
+  const length=30, width=6, height=3.6;
 
-  function panel(zOffset) {
-    const g = new THREE.BoxGeometry(width, height, length);
-    const m = new THREE.MeshStandardMaterial({
-      color: 0x0f1724,
-      roughness: 0.95,
-      metalness: 0.05
-    });
-    const mesh = new THREE.Mesh(g, m);
-    mesh.position.z = zOffset;
-    mesh.receiveShadow = true;
-    return mesh;
+  function seg(z){
+    const mesh = new THREE.Mesh(
+      new THREE.BoxGeometry(width,height,length),
+      new THREE.MeshStandardMaterial({ color:0x0f1724, roughness:.95, metalness:.05 })
+    );
+    mesh.position.z = z; return mesh;
   }
-
-  const a = panel(-length * 0.5);
-  const b = panel(-length * 1.5);
-  group.add(a, b);
-
-  group.userData = { length, segments: [a, b] };
-
-  // Soft cyan ribs on walls for speed sensation
+  const a=seg(-length*.5), b=seg(-length*1.5);
+  g.add(a,b); g.userData={length,segments:[a,b]};
   const ribs = new THREE.Group();
-  for (let i = 0; i < 24; i++) {
-    const z = -i * 1.2;
-    const geom = new THREE.BoxGeometry(0.04, height * 0.9, 0.05);
-    const mat = new THREE.MeshBasicMaterial({ color: 0x71e1ff });
-    const left = new THREE.Mesh(geom, mat);
-    left.position.set(-width * 0.5 + 0.05, 0, z);
-    const right = left.clone();
-    right.position.x = width * 0.5 - 0.05;
-    ribs.add(left, right);
+  for(let i=0;i<24;i++){
+    const box = new THREE.Mesh(new THREE.BoxGeometry(.04,height*.9,.05), new THREE.MeshBasicMaterial({color:0x71e1ff}));
+    box.position.set(-width*.5+.05,0,-i*1.2); ribs.add(box);
+    const r = box.clone(); r.position.x = width*.5-.05; ribs.add(r);
   }
-  group.add(ribs);
-
-  group.tick = (dz) => {
-    for (const seg of group.userData.segments) {
-      seg.position.z += dz;
-      if (seg.position.z > camera.position.z + length * 0.5) {
-        seg.position.z -= length * 2.0; // recycle backwards
-      }
-    }
-    for (const rib of ribs.children) {
-      rib.position.z += dz;
-      if (rib.position.z > camera.position.z + 1.0) {
-        rib.position.z -= 24 * 1.2; // recycle rib
-      }
-    }
+  g.add(ribs);
+  g.tick = (dz)=>{
+    for(const s of g.userData.segments){ s.position.z += dz; if(s.position.z>camera.position.z+length*.5) s.position.z -= length*2; }
+    for(const r of ribs.children){ r.position.z += dz; if(r.position.z>camera.position.z+1) r.position.z -= 24*1.2; }
   };
-
-  return group;
+  return g;
 }
-const corridor = makeCorridor();
-scene.add(corridor);
+const corridor = makeCorridor(); scene.add(corridor);
 
-// ---------- Player (Spaceship) ----------
-function makeShip() {
+// ------------ ship (low-poly wedge with neon) ------------
+function makeShip(){
   const group = new THREE.Group();
+  const hullMat = new THREE.MeshStandardMaterial({ color:0x1a2436, roughness:.9, metalness:.08 });
 
-  // Fuselage: wedge (cone) pointing forward (−Z)
-  const fuselageGeo = new THREE.ConeGeometry(0.15, 0.5, 12, 1, false);
-  const hullMat = new THREE.MeshStandardMaterial({
-    color: 0x1a2436,
-    roughness: 0.9,
-    metalness: 0.08,
-    emissive: 0x000000
-  });
-  const fuselage = new THREE.Mesh(fuselageGeo, hullMat);
-  fuselage.rotation.x = Math.PI / 2; // cone points -Z
-  fuselage.position.z = 0;
-  group.add(fuselage);
+  const fus = new THREE.Mesh(new THREE.ConeGeometry(.15,.5,12,1,false), hullMat);
+  fus.rotation.x = Math.PI/2; group.add(fus);
 
-  // Wings: thin boxes
-  const wingGeo = new THREE.BoxGeometry(0.26, 0.02, 0.18);
-  const wing = new THREE.Mesh(wingGeo, hullMat);
-  wing.position.set(0, -0.04, -0.12);
-  group.add(wing);
+  const wing = new THREE.Mesh(new THREE.BoxGeometry(.26,.02,.18), hullMat);
+  wing.position.set(0,-.04,-.12); group.add(wing);
 
-  // Neon edge strips (simple planes w/ emissive)
-  const stripGeo = new THREE.BoxGeometry(0.02, 0.02, 0.36);
-  const neonMat = new THREE.MeshBasicMaterial({ color: 0x71e1ff });
-  const stripL = new THREE.Mesh(stripGeo, neonMat);
-  stripL.position.set(-0.08, 0.03, -0.1);
-  const stripR = stripL.clone();
-  stripR.position.x = 0.08;
-  group.add(stripL, stripR);
+  const stripMat = new THREE.MeshBasicMaterial({ color:0x71e1ff });
+  const stripGeo = new THREE.BoxGeometry(.02,.02,.36);
+  const L = new THREE.Mesh(stripGeo, stripMat); L.position.set(-.08,.03,-.1);
+  const R = L.clone(); R.position.x = .08; group.add(L,R);
 
-  // Engine glow: small emissive ring (sprite-like)
-  const engineGeo = new THREE.RingGeometry(0.03, 0.06, 24);
-  const engineMat = new THREE.MeshBasicMaterial({ color: 0x71e1ff, side: THREE.DoubleSide });
-  const engine = new THREE.Mesh(engineGeo, engineMat);
-  engine.rotation.x = Math.PI / 2;
-  engine.position.set(0, 0, 0.24);
-  group.add(engine);
+  const eng = new THREE.Mesh(new THREE.RingGeometry(.03,.06,24), new THREE.MeshBasicMaterial({ color:0x71e1ff, side:THREE.DoubleSide }));
+  eng.rotation.x = Math.PI/2; eng.position.z = .24; group.add(eng);
 
-  group.position.set(0, 0, 0);
-  group.userData = {
-    vx: 0, vy: 0,
-    bank: 0, // visual tilt
-    speed: 6.0,
-    width: 6.0,
-    height: 3.6
-  };
-
-  // For collision: capsule-ish bounds (radius/halfHeight)
-  group.userData.hit = { r: 0.11, h: 0.12 };
-
-  group.tick = (dt, input) => {
-    const u = group.userData;
-    // Input target velocities from drag
-    const accel = 8.5;
-    u.vx += (input.tx - group.position.x) * accel * dt;
-    u.vy += (input.ty - group.position.y) * accel * dt;
-
-    // Damping
-    u.vx *= 0.92;
-    u.vy *= 0.92;
-
-    // Integrate
-    group.position.x += u.vx * dt;
-    group.position.y += u.vy * dt;
-
-    // Clamp to corridor bounds
-    const xMax = (u.width * 0.5) - 0.35;
-    const yMax = (u.height * 0.5) - 0.35;
+  group.userData = { vx:0, vy:0, bank:0, speed:6, width:6, height:3.6, hit:{r:.11,h:.12}, neon:stripMat, engine:eng };
+  group.tick = (dt,input)=>{
+    const u = group.userData, accel = 8.5;
+    u.vx += (input.tx - group.position.x)*accel*dt;
+    u.vy += (input.ty - group.position.y)*accel*dt;
+    u.vx *= .92; u.vy *= .92;
+    group.position.x += u.vx*dt; group.position.y += u.vy*dt;
+    const xMax = u.width*.5 - .35, yMax = u.height*.5 - .35;
     group.position.x = Math.max(-xMax, Math.min(xMax, group.position.x));
     group.position.y = Math.max(-yMax, Math.min(yMax, group.position.y));
-
-    // Bank visual (tilt on X-velocity)
-    const targetBank = THREE.MathUtils.clamp(-u.vx * 0.25, -0.35, 0.35);
-    u.bank += (targetBank - u.bank) * 8 * dt;
-    group.rotation.z = u.bank;
-
-    // Gentle breathing pulse on neon strips
-    const pulse = 0.5 + 0.5 * Math.sin(perfTime * 2.8);
-    neonMat.color.setHSL(0.53, 0.7, 0.45 + 0.15 * pulse); // around cyan
-    engine.scale.setScalar(1.0 + 0.15 * pulse);
+    const targetBank = THREE.MathUtils.clamp(-u.vx*.25,-.35,.35);
+    u.bank += (targetBank - u.bank)*8*dt; group.rotation.z = u.bank;
+    const pulse = 0.5 + 0.5*Math.sin(perfTime*2.8);
+    u.engine.scale.setScalar(1 + .15*pulse);
   };
-
   return group;
 }
-const ship = makeShip();
-scene.add(ship);
+const ship = makeShip(); scene.add(ship);
 
-// ---------- Meteors ----------
-const meteors = [];
-const meteorPool = [];
-
-function noise3(p) {
-  // CPU-side pseudo noise for seeding only; (actual crack glow is shader-based).
-  return Math.sin(p.x * 12.9898 + p.y * 78.233 + p.z * 37.719) * 43758.5453 % 1;
-}
-
-function makeMeteorMaterial() {
-  // Custom shader to create vein-like emissive cracks from noise
-  const base = new THREE.MeshStandardMaterial({
-    color: 0x111827,
-    roughness: 1.0,
-    metalness: 0.0,
-    emissive: 0x000000
-  });
-
-  base.onBeforeCompile = (shader) => {
+// ------------ meteor (low-poly + emissive “veins”) ------------
+function makeMeteorMaterial(){
+  const base = new THREE.MeshStandardMaterial({ color:0x111827, roughness:1, metalness:0, emissive:0x000000 });
+  base.onBeforeCompile = (shader)=>{
     shader.uniforms.uTime = { value: 0 };
-    shader.uniforms.uEmissiveColor = { value: new THREE.Color(0x71e1ff) };
-    shader.uniforms.uEmissiveAmp = { value: 1.8 };
-
-    // 3D noise (simplex-ish) for veins
-    const noiseGLSL = `
-    vec3 mod289(vec3 x){return x - floor(x * (1.0 / 289.0)) * 289.0;}
-    vec4 mod289(vec4 x){return x - floor(x * (1.0 / 289.0)) * 289.0;}
-    vec4 permute(vec4 x){return mod289(((x*34.0)+1.0)*x);}
-    vec4 taylorInvSqrt(vec4 r){return 1.79284291400159 - 0.85373472095314 * r;}
-    float snoise(vec3 v){
-      const vec2 C = vec2(1.0/6.0, 1.0/3.0);
-      const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
-      vec3 i  = floor(v + dot(v, C.yyy) );
-      vec3 x0 = v - i + dot(i, C.xxx) ;
-      vec3 g = step(x0.yzx, x0.xyz);
-      vec3 l = 1.0 - g;
-      vec3 i1 = min( g.xyz, l.zxy );
-      vec3 i2 = max( g.xyz, l.zxy );
-      vec3 x1 = x0 - i1 + C.xxx;
-      vec3 x2 = x0 - i2 + C.yyy;
-      vec3 x3 = x0 - D.yyy;
-      i = mod289(i);
-      vec4 p = permute( permute( permute(
-                 i.z + vec4(0.0, i1.z, i2.z, 1.0 ))
-               + i.y + vec4(0.0, i1.y, i2.y, 1.0 ))
-               + i.x + vec4(0.0, i1.x, i2.x, 1.0 ));
-      float n_ = 0.142857142857;
-      vec3  ns = n_ * D.wyz - D.xzx;
-      vec4 j = p - 49.0 * floor(p * ns.z * ns.z);
-      vec4 x_ = floor(j * ns.z);
-      vec4 y_ = floor(j - 7.0 * x_ );
-      vec4 x = x_ *ns.x + ns.yyyy;
-      vec4 y = y_ *ns.x + ns.yyyy;
-      vec4 h = 1.0 - abs(x) - abs(y);
-      vec4 b0 = vec4( x.xy, y.xy );
-      vec4 b1 = vec4( x.zw, y.zw );
-      vec4 s0 = floor(b0)*2.0 + 1.0;
-      vec4 s1 = floor(b1)*2.0 + 1.0;
-      vec4 sh = -step(h, vec4(0.0));
-      vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy ;
-      vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww ;
-      vec3 p0 = vec3(a0.xy,h.x);
-      vec3 p1 = vec3(a1.xy,h.y);
-      vec3 p2 = vec3(a1.zw,h.z);
-      vec3 p3 = vec3(a0.zw,h.w);
-      vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2,p2), dot(p3,p3)));
-      p0 *= norm.x;
-      p1 *= norm.y;
-      p2 *= norm.z;
-      p3 *= norm.w;
-      vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1),
-                              dot(x2,x2), dot(x3,x3)), 0.0);
-      m = m*m;
-      return 42.0 * dot( m*m, vec4( dot(p0,x0), dot(p1,x1),
-                                     dot(p2,x2), dot(p3,x3) ) );
-    }`;
-
-    shader.fragmentShader = shader.fragmentShader.replace(
-      '#include <common>',
-      `#include <common>
-       uniform float uTime;
-       uniform vec3 uEmissiveColor;
-       uniform float uEmissiveAmp;
-       ${noiseGLSL}
-      `
-    );
-
-    shader.fragmentShader = shader.fragmentShader.replace(
-      '#include <lights_fragment_begin>',
-      `
-      #include <lights_fragment_begin>
-
-      // World-space position (approx using vViewPosition)
-      // vViewPosition is in view space; derive a pseudo world-ish coord by mixing with normal.
-      vec3 p = -vViewPosition * 0.25;
-      // Layered noise
-      float n1 = snoise(p * 0.8 + vec3(0.0, uTime * 0.08, 0.0));
-      float n2 = snoise(p * 2.4 - vec3(uTime * 0.05, 0.0, 0.0));
-      float veins = smoothstep(0.52, 0.56, abs(sin(3.0*n1) + 0.35*n2));
-
-      // Edge neon intensity
-      float glow = veins;
-
-      // Add emissive glow
-      reflectedLight.indirectDiffuse += uEmissiveAmp * glow * vec3(0.0); // keep diffuse unchanged
-      reflectedLight.directDiffuse += vec3(0.0);
-
-      // Write emissive into outgoingLight (post-lighting)
-      vec3 neon = uEmissiveColor * (glow * uEmissiveAmp * 0.5);
-      outgoingLight += neon;
-      `
-    );
-
+    shader.uniforms.uEmColor = { value: new THREE.Color(0x71e1ff) };
+    shader.uniforms.uAmp = { value: 1.8 };
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', `
+        #include <common>
+        uniform float uTime; uniform vec3 uEmColor; uniform float uAmp;
+        float hash(vec3 p){ p=fract(p*0.3183099+vec3(.1,.2,.3)); p*=17.0; return fract(p.x*p.y*p.z*(p.x+p.y+p.z)); }
+        float n3(vec3 p){ vec3 i=floor(p); vec3 f=fract(p); float s=0.0; for(int x=0;x<2;x++)for(int y=0;y<2;y++)for(int z=0;z<2;z++){ vec3 o=vec3(x,y,z); s+=mix(0.,1.,dot(f-o,f-o)<1.)*hash(i+o);} return s/8.0; }
+      `)
+      .replace('#include <lights_fragment_begin>', `
+        #include <lights_fragment_begin>
+        vec3 p = -vViewPosition * 0.25;
+        float v = smoothstep(0.55,0.6, abs(sin(n3(p*1.3+vec3(0.0,uTime*0.08,0.0))*6.2831)));
+        vec3 neon = uEmColor * (v * uAmp * 0.5);
+        outgoingLight += neon;
+      `);
     base.userData.shader = shader;
   };
-
   return base;
 }
-
-function makeMeteor() {
-  // Low-poly base using icosahedron, then perturb vertices for lumpy asteroid
-  const radius = THREE.MathUtils.lerp(0.16, 0.28, Math.random());
-  const detail = 1; // low-poly feel
-  const geo = new THREE.IcosahedronGeometry(radius, detail);
-
-  // Deform vertices
+function makeMeteor(){
+  const r = THREE.MathUtils.lerp(.16,.28,Math.random());
+  const geo = new THREE.IcosahedronGeometry(r,1);
   const pos = geo.attributes.position;
-  for (let i = 0; i < pos.count; i++) {
-    const v = new THREE.Vector3().fromBufferAttribute(pos, i);
-    const k = 0.15 * Math.sin(v.x * 9 + v.y * 7 + v.z * 11);
-    v.addScaledVector(v.clone().normalize(), k * radius);
+  for(let i=0;i<pos.count;i++){
+    const v = new THREE.Vector3().fromBufferAttribute(pos,i);
+    const k = 0.15*Math.sin(v.x*9+v.y*7+v.z*11);
+    v.addScaledVector(v.clone().normalize(), k*r);
     pos.setXYZ(i, v.x, v.y, v.z);
   }
-  pos.needsUpdate = true;
   geo.computeVertexNormals();
-
   const mat = makeMeteorMaterial();
   const m = new THREE.Mesh(geo, mat);
-  m.castShadow = false;
-  m.receiveShadow = false;
-
-  // Random tumble
-  m.userData.rot = new THREE.Vector3(
-    THREE.MathUtils.randFloat(-1.0, 1.0) * 0.7,
-    THREE.MathUtils.randFloat(-1.0, 1.0) * 0.7,
-    THREE.MathUtils.randFloat(-1.0, 1.0) * 0.7
-  );
-
-  // Speed/dir: move toward +Z (camera/ship)
-  m.userData.vz = THREE.MathUtils.randFloat(4.8, 7.5);
-  m.userData.vx = THREE.MathUtils.randFloatSpread(0.15);
-  m.userData.vy = THREE.MathUtils.randFloatSpread(0.15);
-
-  // Hitbox radius
-  m.userData.r = radius * 0.85;
-
+  m.userData = {
+    rot: new THREE.Vector3(THREE.MathUtils.randFloatSpread(.7),THREE.MathUtils.randFloatSpread(.7),THREE.MathUtils.randFloatSpread(.7)),
+    vx: THREE.MathUtils.randFloatSpread(.15), vy: THREE.MathUtils.randFloatSpread(.15), vz: THREE.MathUtils.randFloat(4.8,7.5),
+    r: r*.85
+  };
   return m;
 }
+const meteors = [], pool = [];
+function spawnMeteor(zStart=-22){
+  const m = pool.pop() || makeMeteor();
+  const laneW = 2.4, x = THREE.MathUtils.randInt(-2,2)*(laneW/4), y = THREE.MathUtils.randFloat(-.9,.9);
+  m.position.set(x,y,zStart);
+  const magenta = Math.random()<0.15, sh=m.material.userData.shader;
+  if (sh){ sh.uniforms.uEmColor.value.set(magenta?0xff4fe3:0x71e1ff); sh.uniforms.uAmp.value = magenta?2.3:1.8; }
+  meteors.push(m); scene.add(m);
+}
+function despawn(m){ scene.remove(m); meteors.splice(meteors.indexOf(m),1); pool.push(m); }
 
-function spawnMeteor(zStart = -30) {
-  const m = meteorPool.pop() || makeMeteor();
-  const laneWidth = 2.4; // roughly 5 lanes across corridor width ~6
-  const x = THREE.MathUtils.randInt(-2, 2) * (laneWidth / 4);
-  const y = THREE.MathUtils.randFloat(-0.9, 0.9);
-  m.position.set(x, y, zStart);
-  m.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+// ------------ input ------------
+const input = { active:false, tx:0, ty:0, startX:0, startY:0, startTX:0, startTY:0 };
+function screenToWorld(dx,dy){ return { wx: dx*(6/innerWidth), wy: -dy*(3.6/innerHeight) }; }
+function pd(e){ input.active=true; const t=('touches'in e)?e.touches[0]:e; input.startX=t.clientX; input.startY=t.clientY; input.startTX=ship.position.x; input.startTY=ship.position.y; }
+function pm(e){ if(!input.active) return; const t=('touches'in e)?e.touches[0]:e; const {wx,wy}=screenToWorld(t.clientX-input.startX,t.clientY-input.startY); input.tx=input.startTX+wx*1.4; input.ty=input.startTY+wy*1.4; }
+function pu(){ input.active=false; }
+addEventListener('pointerdown',pd,{passive:true}); addEventListener('pointermove',pm,{passive:true}); addEventListener('pointerup',pu,{passive:true});
+addEventListener('touchstart',pd,{passive:true}); addEventListener('touchmove',pm,{passive:true}); addEventListener('touchend',pu,{passive:true});
 
-  // Cyan by default; occasional magenta leader
-  const magenta = Math.random() < 0.15;
-  const shader = m.material.userData.shader;
-  if (shader) {
-    shader.uniforms.uEmissiveColor.value.set(magenta ? 0xff4fe3 : 0x71e1ff);
-    shader.uniforms.uEmissiveAmp.value = magenta ? 2.3 : 1.8;
-  }
+// ------------ game state / UI wiring ------------
+let running=false, crashed=false, perfTime=0, last=performance.now(), playTime=0, score=0, spawnT=0;
+function setPaused(p){ running=!p && !crashed; if(overlay) overlay.hidden = running; if(pauseBtn) pauseBtn.textContent = running?'⏸':'▶︎'; }
+function resetGame(){
+  crashed=false; playTime=0; score=0; spawnT=0;
+  if(timeEl) timeEl.textContent='0.0'; if(scoreEl) scoreEl.textContent='0';
+  if(finalTime) finalTime.textContent='0.0'; if(finalScore) finalScore.textContent='0';
+  for(let i=meteors.length-1;i>=0;i--) despawn(meteors[i]);
+  for(let i=0;i<6;i++) spawnMeteor(-8 - i*3);
+  ship.position.set(0,0,0); input.tx=input.ty=0;
+}
+if (pauseBtn) pauseBtn.addEventListener('click', ()=>setPaused(!(overlay && overlay.hidden)));
+if (resumeBtn) resumeBtn.addEventListener('click', ()=>setPaused(false));
+if (restartBtn) restartBtn.addEventListener('click', ()=>{ resetGame(); setPaused(false); });
+if (againBtn) againBtn.addEventListener('click', ()=>{ if(gameover) gameover.hidden=true; resetGame(); setPaused(false); });
 
-  meteors.push(m);
-  scene.add(m);
+resetGame(); setPaused(true); // start on overlay
+
+// ------------ collision ------------
+function hit(m){
+  const dx=m.position.x-ship.position.x, dy=m.position.y-ship.position.y, dz=m.position.z-(ship.position.z-.06);
+  const minR = m.userData.r + ship.userData.hit.r;
+  return (dx*dx+dy*dy+dz*dz) < (minR*minR);
 }
 
-function despawnMeteor(m) {
-  scene.remove(m);
-  meteors.splice(meteors.indexOf(m), 1);
-  meteorPool.push(m);
-}
+// ------------ main loop ------------
+function frame(now){
+  const dt = Math.min(.033, (now-last)/1000); last=now; perfTime+=dt;
+  const forward = ship.userData.speed*dt; corridor.tick(forward);
 
-// ---------- Controls (drag/touch/mouse) ----------
-const input = {
-  active: false,
-  tx: 0, ty: 0, // target positions in world space relative to center
-  startX: 0, startY: 0,
-  startTX: 0, startTY: 0
-};
-
-function screenToWorld(dx, dy) {
-  // Translate pixels to corridor-local offsets
-  const scaleX = 6.0 / window.innerWidth;   // corridor width ~6
-  const scaleY = 3.6 / window.innerHeight;  // corridor height ~3.6
-  return { wx: dx * scaleX, wy: -dy * scaleY };
-}
-
-function onPointerDown(e) {
-  input.active = true;
-  input.startX = ('touches' in e) ? e.touches[0].clientX : e.clientX;
-  input.startY = ('touches' in e) ? e.touches[0].clientY : e.clientY;
-  input.startTX = ship.position.x;
-  input.startTY = ship.position.y;
-}
-function onPointerMove(e) {
-  if (!input.active) return;
-  const cx = ('touches' in e) ? e.touches[0].clientX : e.clientX;
-  const cy = ('touches' in e) ? e.touches[0].clientY : e.clientY;
-  const dx = cx - input.startX;
-  const dy = cy - input.startY;
-  const { wx, wy } = screenToWorld(dx, dy);
-  input.tx = input.startTX + wx * 1.4;
-  input.ty = input.startTY + wy * 1.4;
-}
-function onPointerUp() { input.active = false; }
-
-window.addEventListener('pointerdown', onPointerDown, { passive: true });
-window.addEventListener('pointermove', onPointerMove, { passive: true });
-window.addEventListener('pointerup', onPointerUp, { passive: true });
-window.addEventListener('touchstart', onPointerDown, { passive: true });
-window.addEventListener('touchmove', onPointerMove, { passive: true });
-window.addEventListener('touchend', onPointerUp, { passive: true });
-
-// ---------- Game state ----------
-let running = false;
-let crashed = false;
-let perfTime = 0;
-let last = performance.now();
-let playTime = 0;
-let score = 0;
-let spawnTimer = 0;
-
-function setPaused(p) {
-  running = !p && !crashed;
-  overlay.hidden = running;
-  pauseBtn.textContent = running ? '⏸' : '▶︎';
-}
-function resetGame() {
-  crashed = false;
-  playTime = 0;
-  score = 0;
-  spawnTimer = 0;
-  timeEl.textContent = '0.0';
-  scoreEl.textContent = '0';
-  finalTime.textContent = '0.0';
-  finalScore.textContent = '0';
-
-  // clear meteors
-  for (let i = meteors.length - 1; i >= 0; i--) {
-    despawnMeteor(meteors[i]);
-  }
-  // spawn a gentle intro wave
-  for (let i = 0; i < 6; i++) {
-    spawnMeteor(-8 - i * 3.0);
-  }
-  ship.position.set(0, 0, 0);
-  input.tx = input.ty = 0;
-}
-
-pauseBtn.addEventListener('click', () => setPaused(!overlay.hidden));
-resumeBtn.addEventListener('click', () => setPaused(false));
-restartBtn.addEventListener('click', () => { resetGame(); setPaused(false); });
-againBtn.addEventListener('click', () => {
-  gameover.hidden = true;
-  resetGame();
-  setPaused(false);
-});
-
-// Show overlay initially
-overlay.hidden = false;
-resetGame();
-
-// ---------- Collision helpers ----------
-function collidesShip(m) {
-  // capsule (ship) vs sphere (meteor), approximated:
-  // ship center:
-  const sx = ship.position.x;
-  const sy = ship.position.y;
-  const sz = ship.position.z;
-  const r = m.userData.r;
-  const dx = m.position.x - sx;
-  const dy = m.position.y - sy;
-  const dz = m.position.z - (sz - 0.06); // slight offset to lenient nose
-  const d2 = dx*dx + dy*dy + dz*dz;
-  const minDist = r + ship.userData.hit.r;
-  return d2 < (minDist * minDist);
-}
-
-// ---------- Main loop ----------
-function frame(now) {
-  const dt = Math.min(0.033, (now - last) / 1000);
-  last = now;
-  perfTime += dt;
-
-  // Animate corridor drift opposite of forward speed
-  const forward = ship.userData.speed * dt;
-  corridor.tick(forward);
-
-  if (running) {
-    playTime += dt;
-    timeEl.textContent = playTime.toFixed(1);
-
-    // Ship sim
+  if (running){
+    playTime += dt; if(timeEl) timeEl.textContent = playTime.toFixed(1);
     ship.tick(dt, input);
-
-    // Spawn meteors
-    spawnTimer -= dt;
-    const spawnInterval = THREE.MathUtils.lerp(0.9, 0.45, Math.min(1, playTime / 45)); // faster over time
-    if (spawnTimer <= 0) {
-      spawnMeteor(-22);
-      spawnTimer = spawnInterval;
-    }
-
-    // Update meteors
-    for (let i = meteors.length - 1; i >= 0; i--) {
-      const m = meteors[i];
-      // Shader time
-      const shader = m.material.userData.shader;
-      if (shader) shader.uniforms.uTime.value = perfTime;
-
-      // Movement
-      m.rotation.x += m.userData.rot.x * dt;
-      m.rotation.y += m.userData.rot.y * dt;
-      m.rotation.z += m.userData.rot.z * dt;
-
-      m.position.z += m.userData.vz * dt;
-      m.position.x += m.userData.vx * dt * 0.2;
-      m.position.y += m.userData.vy * dt * 0.2;
-
-      // Telegraph (brighten if on a collision lane)
-      const sameLane = Math.abs(m.position.x - ship.position.x) < 0.24;
-      if (shader) {
-        shader.uniforms.uEmissiveAmp.value += ((sameLane ? 2.6 : 1.8) - shader.uniforms.uEmissiveAmp.value) * 5 * dt;
-      }
-
-      // Despawn if passed the camera
-      if (m.position.z > camera.position.z + 1.2) {
-        despawnMeteor(m);
-        score += 1;
-        scoreEl.textContent = String(score);
-      } else if (!crashed && collidesShip(m)) {
-        crashed = true;
-        running = false;
-        // Flash & end
-        finalTime.textContent = playTime.toFixed(1);
-        finalScore.textContent = String(score);
-        setTimeout(() => { gameover.hidden = false; }, 120);
+    spawnT -= dt;
+    const interval = THREE.MathUtils.lerp(.9,.45, Math.min(1, playTime/45));
+    if (spawnT<=0){ spawnMeteor(-22); spawnT=interval; }
+    for (let i=meteors.length-1;i>=0;i--){
+      const m=meteors[i]; const sh=m.material.userData.shader; if(sh) sh.uniforms.uTime.value = perfTime;
+      m.rotation.x += m.userData.rot.x*dt; m.rotation.y += m.userData.rot.y*dt; m.rotation.z += m.userData.rot.z*dt;
+      m.position.z += m.userData.vz*dt; m.position.x += m.userData.vx*dt*.2; m.position.y += m.userData.vy*dt*.2;
+      if (m.position.z > camera.position.z + 1.2){ despawn(m); score++; if(scoreEl) scoreEl.textContent=String(score); }
+      else if (!crashed && hit(m)){
+        crashed=true; running=false;
+        if(finalTime) finalTime.textContent = playTime.toFixed(1);
+        if(finalScore) finalScore.textContent = String(score);
+        setTimeout(()=>{ if(gameover) gameover.hidden=false; },120);
       }
     }
   }
 
-  // Render
-  composer.render();
+  // render
+  try{ composer.render(); }catch(err){ showErr('Render: '+err.message); }
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
 
-// ---------- Resize ----------
-function onResize() {
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  composer.setSize(window.innerWidth, window.innerHeight);
-}
-window.addEventListener('resize', onResize, { passive: true });
+// ------------ resize ------------
+addEventListener('resize', ()=>{
+  camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight); composer.setSize(innerWidth, innerHeight);
+}, {passive:true});
