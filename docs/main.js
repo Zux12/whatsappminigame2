@@ -90,18 +90,24 @@
   };
 
   // Monster
-  const monster = {
-    x: MAP_W - 4.5, y: MAP_H - 4.5,
-    speed: 2.4,
-    spotted: false,
-    cooldown: 0
-  };
+// Monster (a bit slower, starts farther)
+const monster = {
+  x: MAP_W - 6.5, y: MAP_H - 6.5,
+  speed: 1.8,
+  spotted: false,
+  cooldown: 0
+};
+
+
 
   // Lamps toggled by action
-  const lamps = [
-    { x: 5, y: 6, on: false },
-    { x: MAP_W - 6, y: MAP_H - 7, on: false }
-  ];
+// Lamps (one ON near the spawn so you can see immediately)
+const lamps = [
+  { x: 4, y: 4, on: true },                 // <- new, near player (bright start)
+  { x: 5, y: 6, on: false },
+  { x: MAP_W - 6, y: MAP_H - 7, on: false }
+];
+
 
   // Camera
   const cam = { x: 0, y: 0 };
@@ -111,6 +117,8 @@
   let elapsed = 0;
   let paused = false;
   let dead = false;
+   let spawnGrace = 3.0; // seconds of safety at start
+
 
   // Input (joystick)
   const stickState = {
@@ -236,7 +244,10 @@
 
   function update(dt) {
     elapsed += dt;
+
+
     timeEl.textContent = elapsed.toFixed(1);
+          spawnGrace = Math.max(0, spawnGrace - dt);
 
     // Player input & stamina
     const inputX = stickState.dx;
@@ -262,27 +273,30 @@
     }
     batteryEl.textContent = Math.round(player.battery * 100) + '%';
 
-    // Monster: simple brain
-    // If LOS and close enough, chase; else wander toward player slowly
-    const dist = Math.hypot(monster.x - player.x, monster.y - player.y);
-    const sees = dist < 10 && hasLOS(monster.x, monster.y, player.x, player.y);
-    monster.spotted = sees || monster.cooldown > 0;
-    if (sees) monster.cooldown = 1.2;
-    else monster.cooldown = Math.max(0, monster.cooldown - dt);
+   // Monster: simple brain (gated by spawn grace)
+if (spawnGrace <= 0) {
+  const dist = Math.hypot(monster.x - player.x, monster.y - player.y);
+  const sees = dist < 8 && hasLOS(monster.x, monster.y, player.x, player.y); // shorter LOS
+  monster.spotted = sees || monster.cooldown > 0;
+  if (sees) monster.cooldown = 1.2; else monster.cooldown = Math.max(0, monster.cooldown - dt);
 
-    const ms = monster.spotted ? monster.speed * 1.15 : monster.speed * 0.7;
-    const dx = player.x - monster.x, dy = player.y - monster.y;
-    const mmag = Math.hypot(dx, dy) || 1;
-    const mx = monster.x + (dx / mmag) * ms * dt;
-    const my = monster.y + (dy / mmag) * ms * dt;
-    tryMove(monster, dt, mx, my);
+  const ms = monster.spotted ? monster.speed * 1.15 : monster.speed * 0.7;
+  const dx = player.x - monster.x, dy = player.y - player.y;
+  const mmag = Math.hypot(dx, dy) || 1;
+  const mx = monster.x + (dx / mmag) * ms * dt;
+  const my = monster.y + (dy / mmag) * ms * dt;
+  tryMove(monster, dt, mx, my);
 
-    // Catch?
-    if (Math.hypot(monster.x - player.x, monster.y - player.y) < 0.45) {
-      dead = true;
-      finalTime.textContent = elapsed.toFixed(1);
-      setGameOver(true);
-    }
+  // Catch only after grace
+  if (Math.hypot(monster.x - player.x, monster.y - player.y) < 0.45) {
+    dead = true;
+    finalTime.textContent = elapsed.toFixed(1);
+    setGameOver(true);
+  }
+} else {
+  monster.spotted = false;
+}
+
 
     // Camera follows player (tile space → pixels)
     const worldW = MAP_W * TILE * pixel;
@@ -348,7 +362,7 @@
     // 1) Fill with dark
     ctx.save();
     ctx.globalCompositeOperation = 'source-over';
-    ctx.fillStyle = 'rgba(0,0,0,0.80)';
+    ctx.fillStyle = 'rgba(0,0,0,0.65)';
     ctx.fillRect(0, 0, W, H);
 
     // 2) Cut out light cones (destination-out)
