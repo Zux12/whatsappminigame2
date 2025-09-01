@@ -25,6 +25,7 @@
   const stickBase = document.getElementById('stick-base');
   const stickKnob = document.getElementById('stick-knob');
 
+
   // Pixel grid scale
   let W = 0, H = 0;
   let pixel = 4;          // base pixel size for tiny pixel art
@@ -342,7 +343,7 @@
     // Darkness mask (brighter than before)
     ctx.save();
     ctx.globalCompositeOperation = 'source-over';
-    ctx.fillStyle = 'rgba(0,0,0,0.65)'; // was 0.80
+    ctx.fillStyle = 'rgba(0,0,0,0.40)'; // was 0.80
     ctx.fillRect(0, 0, W, H);
 
     // Cut light holes
@@ -350,7 +351,8 @@
 
     // Player light
     const baseR = player.radius * TILE * pixel;
-    const lightR = Math.max(40, baseR * (0.5 + player.battery * 0.8));
+const lightR = Math.max(160, baseR * (0.8 + player.battery * 0.8));
+
     radialHole(player.x, player.y, lightR, 0.85);
 
     // Lamp lights
