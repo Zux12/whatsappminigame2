@@ -121,29 +121,62 @@ const ship = makeShip(); scene.add(ship);
 
 // ------------ meteor (low-poly + emissive “veins”) ------------
 function makeMeteorMaterial(){
-  const base = new THREE.MeshStandardMaterial({ color:0x111827, roughness:1, metalness:0, emissive:0x000000 });
+  const base = new THREE.MeshStandardMaterial({
+    color: 0x111827,
+    roughness: 1.0,
+    metalness: 0.0,
+    emissive: 0x000000
+  });
+
   base.onBeforeCompile = (shader)=>{
     shader.uniforms.uTime = { value: 0 };
     shader.uniforms.uEmColor = { value: new THREE.Color(0x71e1ff) };
     shader.uniforms.uAmp = { value: 1.8 };
+
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', `
         #include <common>
-        uniform float uTime; uniform vec3 uEmColor; uniform float uAmp;
-        float hash(vec3 p){ p=fract(p*0.3183099+vec3(.1,.2,.3)); p*=17.0; return fract(p.x*p.y*p.z*(p.x+p.y+p.z)); }
-        float n3(vec3 p){ vec3 i=floor(p); vec3 f=fract(p); float s=0.0; for(int x=0;x<2;x++)for(int y=0;y<2;y++)for(int z=0;z<2;z++){ vec3 o=vec3(x,y,z); s+=mix(0.,1.,dot(f-o,f-o)<1.)*hash(i+o);} return s/8.0; }
+        uniform float uTime;
+        uniform vec3 uEmColor;
+        uniform float uAmp;
+
+        // tiny hashed value noise (cheap)
+        float hash(vec3 p){
+          p = fract(p*0.3183099 + vec3(.1,.2,.3));
+          p *= 17.0;
+          return fract(p.x*p.y*p.z*(p.x+p.y+p.z));
+        }
+        float n3(vec3 p){
+          vec3 i = floor(p);
+          vec3 f = fract(p);
+          float s = 0.0;
+          for (int x=0;x<2;x++)
+          for (int y=0;y<2;y++)
+          for (int z=0;z<2;z++){
+            vec3 o = vec3(x,y,z);
+            // soft box influence
+            s += mix(0.0, 1.0, dot(f-o,f-o) < 1.0) * hash(i+o);
+          }
+          return s/8.0;
+        }
       `)
       .replace('#include <lights_fragment_begin>', `
         #include <lights_fragment_begin>
+        // derive a pseudo world-space point from view position
         vec3 p = -vViewPosition * 0.25;
-        float v = smoothstep(0.55,0.6, abs(sin(n3(p*1.3+vec3(0.0,uTime*0.08,0.0))*6.2831)));
+        float v = smoothstep(0.55, 0.60, abs(sin(n3(p*1.3 + vec3(0.0, uTime*0.08, 0.0)) * 6.2831)));
         vec3 neon = uEmColor * (v * uAmp * 0.5);
-        outgoingLight += neon;
+
+        // ✅ add glow as emissive energy (safe target for MeshStandardMaterial)
+        totalEmissiveRadiance += neon;
       `);
+
     base.userData.shader = shader;
   };
+
   return base;
 }
+
 function makeMeteor(){
   const r = THREE.MathUtils.lerp(.16,.28,Math.random());
   const geo = new THREE.IcosahedronGeometry(r,1);
