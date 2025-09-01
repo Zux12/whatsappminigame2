@@ -303,89 +303,79 @@ player.battery = Math.max(0, player.battery - 0.01 * dt);  // ← 5× slower
     cam.y = Math.max(0, Math.min(worldH - H, cam.y));
   }
 
-  function draw() {
-    ctx.clearRect(0, 0, W, H);
+function draw() {
+  ctx.clearRect(0, 0, W, H);
 
-    // Draw world
-    const startX = Math.max(0, Math.floor((cam.x / (TILE * pixel)) - 2));
-    const startY = Math.max(0, Math.floor((cam.y / (TILE * pixel)) - 2));
-    const endX = Math.min(MAP_W, Math.ceil(((cam.x + W) / (TILE * pixel)) + 2));
-    const endY = Math.min(MAP_H, Math.ceil(((cam.y + H) / (TILE * pixel)) + 2));
+  // --- Draw world (brighter palette) ---
+  const startX = Math.max(0, Math.floor((cam.x / (TILE * pixel)) - 2));
+  const startY = Math.max(0, Math.floor((cam.y / (TILE * pixel)) - 2));
+  const endX = Math.min(MAP_W, Math.ceil(((cam.x + W) / (TILE * pixel)) + 2));
+  const endY = Math.min(MAP_H, Math.ceil(((cam.y + H) / (TILE * pixel)) + 2));
 
-    for (let ty = startY; ty < endY; ty++) {
-      for (let tx = startX; tx < endX; tx++) {
-        const v = map[ty][tx];
-        const sx = tx * TILE * pixel - cam.x;
-        const sy = ty * TILE * pixel - cam.y;
+  for (let ty = startY; ty < endY; ty++) {
+    for (let tx = startX; tx < endX; tx++) {
+      const v = map[ty][tx];
+      const sx = tx * TILE * pixel - cam.x;
+      const sy = ty * TILE * pixel - cam.y;
 
-        // floor
-        ctx.fillStyle = '#0c1220';
+      // Brighter floor
+      ctx.fillStyle = '#1b2b42';               // was #0c1220
+      ctx.fillRect(sx, sy, TILE * pixel, TILE * pixel);
+
+      if (v === 1) {
+        // Brighter walls
+        ctx.fillStyle = '#233a57';             // was #0a0f18
         ctx.fillRect(sx, sy, TILE * pixel, TILE * pixel);
-
-        if (v === 1) {
-          // walls
-          ctx.fillStyle = '#0a0f18';
-          ctx.fillRect(sx, sy, TILE * pixel, TILE * pixel);
-          ctx.fillStyle = '#101b2c';
-          ctx.fillRect(sx, sy, TILE * pixel, 2 * pixel);
-        } else if (v === 2) {
-          // switch
-          ctx.fillStyle = '#27324a';
-          ctx.fillRect(sx, sy, TILE * pixel, TILE * pixel);
-          ctx.fillStyle = '#ffd34d';
-          ctx.fillRect(sx + 3 * pixel, sy + 3 * pixel, 2 * pixel, 2 * pixel);
-        }
+        ctx.fillStyle = '#3b577a';             // was #101b2c
+        ctx.fillRect(sx, sy, TILE * pixel, 2 * pixel);
+      } else if (v === 2) {
+        // Switch
+        ctx.fillStyle = '#2b3f5c';
+        ctx.fillRect(sx, sy, TILE * pixel, TILE * pixel);
+        ctx.fillStyle = '#ffd34d';
+        ctx.fillRect(sx + 3 * pixel, sy + 3 * pixel, 2 * pixel, 2 * pixel);
       }
     }
+  }
 
-    // Lamps
-    for (const l of lamps) {
-      const sx = l.x * TILE * pixel - cam.x;
-      const sy = l.y * TILE * pixel - cam.y;
-      ctx.fillStyle = l.on ? '#8cf6ff' : '#223349';
-      ctx.fillRect(sx + 3 * pixel, sy + 3 * pixel, 2 * pixel, 2 * pixel);
-    }
+  // Lamps (bright cyan)
+  for (const l of lamps) {
+    const sx = l.x * TILE * pixel - cam.x;
+    const sy = l.y * TILE * pixel - cam.y;
+    ctx.fillStyle = l.on ? '#9cf7ff' : '#314863';
+    ctx.fillRect(sx + 3 * pixel, sy + 3 * pixel, 2 * pixel, 2 * pixel);
+  }
 
-    // Monster
-    drawPixelChar(monster.x, monster.y, '#141921', '#000000', 0.6);
-
-    // Player
-    drawPixelChar(player.x, player.y, '#a8dbff', '#71e1ff', 1.0);
-
-    // Darkness mask (brighter than before)
-    // --- Darkness mask (skipped in Bright Mode) ---
-if (!devBrightMode) {
-  ctx.save();
-  ctx.globalCompositeOperation = 'source-over';
-  // very light ambient even when darkness is on
-  ctx.fillStyle = 'rgba(0,0,0,0.15)';
-  ctx.fillRect(0, 0, W, H);
-
-  // punch holes for player + lamps
-  ctx.globalCompositeOperation = 'destination-out';
-
-  const baseR = player.radius * TILE * pixel;
-  const lightR = Math.max(400, baseR * 1.4);   // big flashlight
-  radialHole(player.x, player.y, lightR, 1.0);
-
-  for (const l of lamps) if (l.on) radialHole(l.x + 0.5, l.y + 0.5, 300, 1.0);
-  ctx.restore();
-}
-
-// Always draw a bright marker at the player (helps if you later turn darkness back on)
-{
+  // Subtle player glow (purely visual, not a darkness mask)
   const px = player.x * TILE * pixel - cam.x;
   const py = player.y * TILE * pixel - cam.y;
-  ctx.fillStyle = 'white';
+  ctx.save();
+  const g = ctx.createRadialGradient(px, py, 0, px, py, 220);
+  g.addColorStop(0, 'rgba(180,230,255,0.6)');
+  g.addColorStop(1, 'rgba(180,230,255,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.arc(px, py, 220, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  // Monster
+  drawPixelChar(monster.x, monster.y, '#243040', '#000000', 0.6);
+
+  // Player
+  drawPixelChar(player.x, player.y, '#c2e8ff', '#8ee6ff', 1.0);
+
+  // Tiny white dot at player center (helps spotting)
+  ctx.fillStyle = '#ffffff';
   ctx.fillRect(px - 2, py - 2, 4, 4);
+
+  // Light red tint when spotted
+  if (monster.spotted) {
+    ctx.fillStyle = 'rgba(255,77,109,0.06)';
+    ctx.fillRect(0, 0, W, H);
+  }
 }
 
-
-    if (monster.spotted) {
-      ctx.fillStyle = 'rgba(255,77,109,0.08)';
-      ctx.fillRect(0, 0, W, H);
-    }
-  }
 
   function drawPixelChar(cx, cy, body, accent, pulse = 1) {
     const x = cx * TILE * pixel - cam.x;
