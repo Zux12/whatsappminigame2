@@ -16,7 +16,8 @@ body {
   overflow: hidden;
 }
 
-
+/* Make the HTML 'hidden' attribute actually hide elements even if a display rule exists */
+[hidden] { display: none !important; }
 
 /* Put this near the top or with the #game and #ui rules */
 
