@@ -397,7 +397,9 @@
   document.addEventListener('gesturestart', e => e.preventDefault());
 
   // If the tab goes background, just pause (not game over)
-  document.addEventListener('visibilitychange', () => {
-    if (document.hidden && !dead) setOverlay(true);
-  });
+// If the tab goes background, pause (but not during initial load)
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && !dead && elapsed > 0.5) setOverlay(true);
+});
+
 })();
