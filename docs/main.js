@@ -1,416 +1,184 @@
-/* Shadow Tag — Tiny Pixel (mobile-first)
-   v0.12: spawn grace, brighter start lamp, slower/farther monster,
-          darkness tweak, fixed AI dy bug, and clean gating for catch.
-*/
+// Neon Corridor — 3D Runner (mobile-friendly, no assets)
+import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
 
-(() => {
-  const canvas = document.getElementById('game');
-  const ctx = canvas.getContext('2d');
+const timeEl = document.getElementById('time');
+const scoreEl = document.getElementById('score');
+const pauseBtn = document.getElementById('pause');
+const overlay = document.getElementById('overlay');
+const resumeBtn = document.getElementById('resume');
+const restartBtn = document.getElementById('restart');
+const gameover = document.getElementById('gameover');
+const againBtn = document.getElementById('again');
+const finalTime = document.getElementById('finalTime');
+const finalScore = document.getElementById('finalScore');
 
-  // UI elements
-  const timeEl = document.getElementById('time');
-  const batteryEl = document.getElementById('battery');
-  const staminaEl = document.getElementById('stamina');
-  const pauseBtn = document.getElementById('pauseBtn');
-  const overlay = document.getElementById('overlay');
-  const resumeBtn = document.getElementById('resumeBtn');
-  const restartBtn = document.getElementById('restartBtn');
-  const gameover = document.getElementById('gameover');
-  const againBtn = document.getElementById('againBtn');
-  const finalTime = document.getElementById('finalTime');
-  const actionBtn = document.getElementById('actionBtn');
+let W = innerWidth, H = innerHeight, dpr = Math.min(2, devicePixelRatio || 1);
+const renderer = new THREE.WebGLRenderer({ antialias:true });
+renderer.setPixelRatio(dpr);
+renderer.setSize(W, H);
+renderer.setClearColor(0x0a0f18, 1);
+document.body.appendChild(renderer.domElement);
 
-  // Stick elements
-  const stick = document.getElementById('stick');
-  const stickBase = document.getElementById('stick-base');
-  const stickKnob = document.getElementById('stick-knob');
+const scene = new THREE.Scene();
+scene.fog = new THREE.Fog(0x0a0f18, 8, 32);
 
-   // --- DEV BRIGHT MODE (default ON so you can see immediately) ---
-let devBrightMode = true; // start bright
-// toggle with B (desktop) — optional
-window.addEventListener('keydown', (e) => {
-  if (e.key.toLowerCase() === 'b') {
-    devBrightMode = !devBrightMode;
-    localStorage.setItem('devBrightMode', devBrightMode ? '1' : '0');
-  }
-});
-// restore last choice
-devBrightMode = (localStorage.getItem('devBrightMode') === '1') || devBrightMode;
+const camera = new THREE.PerspectiveCamera(60, W/H, 0.1, 100);
+camera.position.set(0, 0, 6);
 
+const ambient = new THREE.AmbientLight(0x88aaff, 0.5);
+scene.add(ambient);
+const headLight = new THREE.PointLight(0x77ddff, 1.1, 6, 2);
+headLight.position.set(0, 0.4, 1);
+scene.add(headLight);
 
-  // Pixel grid scale
-  let W = 0, H = 0;
-  let pixel = 4;          // base pixel size for tiny pixel art
-  const TILE = 8;         // tile size in "pixel units"
-  let scale = 1;          // dynamic for screen
+// Corridor (single long box walls/floor/ceiling)
+const CW = 6, CH = 3.4, CL = 100;
+const wallMat = new THREE.MeshStandardMaterial({ color:0x172237, metalness:0.1, roughness:0.9 });
+function makePanel(dx, dy, sx, sy, sz){
+  const m = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), wallMat);
+  m.position.set(dx, dy, -sz/2);
+  m.receiveShadow = true;
+  scene.add(m);
+  return m;
+}
+makePanel(0, -CH/2, CW, 0.2, CL);   // floor
+makePanel(0,  CH/2, CW, 0.2, CL);   // ceiling
+makePanel(-CW/2,0, 0.2, CH, CL);    // left wall
+makePanel( CW/2,0, 0.2, CH, CL);    // right wall
 
-  function resize() {
-    const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
-    W = Math.floor(window.innerWidth);
-    H = Math.floor(window.innerHeight);
-    canvas.width = Math.floor(W * dpr);
-    canvas.height = Math.floor(H * dpr);
-    canvas.style.width = W + 'px';
-    canvas.style.height = H + 'px';
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+// Player (small glowing ship)
+const shipGeo = new THREE.ConeGeometry(0.25, 0.6, 12);
+shipGeo.rotateX(Math.PI/2);
+const shipMat = new THREE.MeshStandardMaterial({ color:0x8ee6ff, emissive:0x2ad8ff, emissiveIntensity:0.6, metalness:0.2, roughness:0.4 });
+const ship = new THREE.Mesh(shipGeo, shipMat);
+ship.position.set(0, 0, 4.6);
+scene.add(ship);
 
-    // scale tiles so they fit nicely on mobile
-    const targetTilesX = 22;
-    scale = Math.max(2, Math.floor(W / (targetTilesX * TILE)));
-    pixel = Math.max(2, Math.min(6, scale)); // keep pixels chunky
-  }
-  window.addEventListener('resize', resize, { passive: true });
-  resize();
+const shipGlow = new THREE.Mesh(new THREE.SphereGeometry(0.32, 16, 16),
+                                new THREE.MeshBasicMaterial({ color:0x8ee6ff, transparent:true, opacity:0.15 }));
+shipGlow.position.copy(ship.position);
+scene.add(shipGlow);
 
-  // Simple tilemap (1=wall, 0=floor, 2=switch)
-  const MAP_W = 36, MAP_H = 24;
-  const map = [];
-  for (let y = 0; y < MAP_H; y++) {
-    map[y] = [];
-    for (let x = 0; x < MAP_W; x++) {
-      const edge = (x === 0 || y === 0 || x === MAP_W - 1 || y === MAP_H - 1);
-      map[y][x] = edge ? 1 : 0;
-    }
-  }
-  for (let y = 2; y < MAP_H - 2; y += 2) {
-    for (let x = 2; x < MAP_W - 2; x++) map[y][x] = 1;
-  }
-  for (let y = 2; y < MAP_H - 2; y += 2) {
-    map[y][2 + ((y * 5) % (MAP_W - 4))] = 0;
-  }
-  map[6][5] = 2;
-  map[MAP_H - 7][MAP_W - 6] = 2;
+// Obstacles
+const OB_COUNT = 40;
+const obstacles = [];
+const boxGeo = new THREE.BoxGeometry(1,1,1);
+const obMat = new THREE.MeshStandardMaterial({ color:0x2e3e5c, metalness:0.1, roughness:0.6, emissive:0x0, emissiveIntensity:0.2 });
 
-  function isWall(tx, ty) {
-    if (tx < 0 || ty < 0 || tx >= MAP_W || ty >= MAP_H) return true;
-    return map[ty][tx] === 1;
-  }
+function rand(min,max){ return min + Math.random()*(max-min); }
 
-  // Player
-  const player = {
-    x: 3.5, y: 3.5,
-    vx: 0, vy: 0,
-    speed: 2.6, sprint: 3.6,
-    stamina: 1, // 0..1
-    battery: 1, // 0..1
-    lightOn: true,
-    radius: 9 // light radius in tiles (base)
-  };
-
-  // Monster (slower + farther)
-  const monster = {
-    x: MAP_W - 6.5, y: MAP_H - 6.5,
-    speed: 1.8,
-    spotted: false,
-    cooldown: 0
-  };
-
-  // Lamps (one ON near spawn so you can see right away)
-  const lamps = [
-    { x: 4, y: 4, on: true },                 // bright spawn area
-    { x: 5, y: 6, on: false },
-    { x: MAP_W - 6, y: MAP_H - 7, on: false }
-  ];
-
-  // Camera
-  const cam = { x: 0, y: 0 };
-
-  // Time / state
-  let t0 = performance.now();
-  let elapsed = 0;
-  let paused = false;
-  let dead = false;
-  let spawnGrace = 3.0; // seconds of safety at start
-
-  // Input (joystick)
-  const stickState = {
-    active: false,
-    cx: 0, cy: 0,
-    dx: 0, dy: 0
-  };
-
-  function setOverlay(show) { overlay.hidden = !show; paused = show; }
-  function setGameOver(show) { gameover.hidden = !show; dead = show; }
-
-  // Joystick helpers
-  function within(elem, x, y) {
-    const r = elem.getBoundingClientRect();
-    return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
-  }
-  function onPointerDown(e) {
-    const x = (e.touches ? e.touches[0].clientX : e.clientX);
-    const y = (e.touches ? e.touches[0].clientY : e.clientY);
-    if (within(stick, x, y)) {
-      stickState.active = true;
-      const r = stickBase.getBoundingClientRect();
-      stickState.cx = r.left + r.width / 2;
-      stickState.cy = r.top + r.height / 2;
-      updateStick(x, y);
-    }
-  }
-  function onPointerMove(e) {
-    if (!stickState.active) return;
-    const x = (e.touches ? e.touches[0].clientX : e.clientX);
-    const y = (e.touches ? e.touches[0].clientY : e.clientY);
-    updateStick(x, y);
-  }
-  function onPointerUp() {
-    stickState.active = false;
-    stickState.dx = 0; stickState.dy = 0;
-    stickKnob.style.left = (140/2 - 32) + 'px';
-    stickKnob.style.top  = (140/2 - 32) + 'px';
-  }
-  function updateStick(x, y) {
-    const dx = x - stickState.cx;
-    const dy = y - stickState.cy;
-    const max = 50;
-    const mag = Math.hypot(dx, dy);
-    const cl = mag > max ? max / mag : 1;
-    const ndx = dx * cl, ndy = dy * cl;
-    stickKnob.style.left = (140/2 - 32 + ndx) + 'px';
-    stickKnob.style.top  = (140/2 - 32 + ndy) + 'px';
-    stickState.dx = ndx / max;
-    stickState.dy = ndy / max;
-  }
-
-  document.addEventListener('touchstart', onPointerDown, { passive: false });
-  document.addEventListener('touchmove', onPointerMove, { passive: false });
-  document.addEventListener('touchend', onPointerUp, { passive: true });
-  document.addEventListener('mousedown', onPointerDown);
-  document.addEventListener('mousemove', onPointerMove);
-  document.addEventListener('mouseup', onPointerUp);
-
-  // Pause/Resume/Restart
-  pauseBtn.addEventListener('click', () => setOverlay(true));
-  resumeBtn.addEventListener('click', () => setOverlay(false));
-  restartBtn.addEventListener('click', () => location.reload());
-  againBtn.addEventListener('click', () => location.reload());
-
-  // Action: toggle nearby lamp via switch tile
-  actionBtn.addEventListener('click', () => {
-    const px = Math.round(player.x), py = Math.round(player.y);
-    if (map[py]?.[px] === 2) {
-      let best = null, bd = 1e9;
-      for (const l of lamps) {
-        const d = Math.hypot(l.x - px, l.y - py);
-        if (d < bd) { bd = d; best = l; }
-      }
-      if (best) best.on = !best.on;
-    }
-  });
-
-  // Movement & collisions
-  function tryMove(obj, dt, nx, ny) {
-    const rad = 0.25; // collision radius
-    const samples = [
-      [nx - rad, ny - rad], [nx + rad, ny - rad],
-      [nx - rad, ny + rad], [nx + rad, ny + rad]
-    ];
-    for (const [sx, sy] of samples) {
-      if (isWall(Math.floor(sx), Math.floor(sy))) return false;
-    }
-    obj.x = nx; obj.y = ny; return true;
-  }
-
-  // Line-of-sight (simple tile stepping)
-  function hasLOS(ax, ay, bx, by) {
-    let x = Math.floor(ax), y = Math.floor(ay);
-    const tx = Math.floor(bx), ty = Math.floor(by);
-    const dx = Math.sign(tx - x), dy = Math.sign(ty - y);
-    let steps = 0;
-    while (x !== tx || y !== ty) {
-      if (isWall(x, y)) return false;
-      const rx = Math.abs((tx + 0.5) - (x + 0.5));
-      const ry = Math.abs((ty + 0.5) - (y + 0.5));
-      if (rx > ry) x += dx; else y += dy;
-      if (++steps > 200) break;
-    }
-    return true;
-  }
-
-  // Main loop
-  let raf;
-  function step(now) {
-    const dt = Math.min(0.033, (now - t0) / 1000);
-    t0 = now;
-    if (!paused && !dead) update(dt);
-    draw();
-    raf = requestAnimationFrame(step);
-  }
-  requestAnimationFrame(step);
-
-  function update(dt) {
-    elapsed += dt;
-    timeEl.textContent = elapsed.toFixed(1);
-    spawnGrace = Math.max(0, spawnGrace - dt);
-
-    // Player input & stamina
-    const inputX = stickState.dx;
-    const inputY = stickState.dy;
-    const mag = Math.hypot(inputX, inputY);
-    const moving = mag > 0.1;
-
-    const wantSprint = mag > 0.6 && player.stamina > 0.05; // auto sprint on strong push
-    const spd = (wantSprint ? player.sprint : player.speed);
-    if (moving) {
-      const nx = player.x + (inputX / (mag || 1)) * spd * dt;
-      const ny = player.y + (inputY / (mag || 1)) * spd * dt;
-      tryMove(player, dt, nx, ny);
-      player.stamina = Math.max(0, player.stamina - (wantSprint ? 0.45 : 0.12) * dt);
-    } else {
-      player.stamina = Math.min(1, player.stamina + 0.35 * dt);
-    }
-    staminaEl.textContent = Math.round(player.stamina * 100) + '%';
-
-    // Battery drains if lightOn
-    if (player.lightOn && player.battery > 0) {
-player.battery = Math.max(0, player.battery - 0.01 * dt);  // ← 5× slower
-    }
-    batteryEl.textContent = Math.round(player.battery * 100) + '%';
-
-    // --- Monster AI (runs only after grace) ---
-    if (spawnGrace <= 0) {
-      const dist = Math.hypot(monster.x - player.x, monster.y - player.y);
-      const sees = dist < 8 && hasLOS(monster.x, monster.y, player.x, player.y);
-      monster.spotted = sees || monster.cooldown > 0;
-      if (sees) monster.cooldown = 1.2; else monster.cooldown = Math.max(0, monster.cooldown - dt);
-
-      const ms = monster.spotted ? monster.speed * 1.15 : monster.speed * 0.7;
-      const dx = player.x - monster.x, dy = player.y - monster.y; // (fixed dy)
-      const mmag = Math.hypot(dx, dy) || 1;
-      const mx = monster.x + (dx / mmag) * ms * dt;
-      const my = monster.y + (dy / mmag) * ms * dt;
-      tryMove(monster, dt, mx, my);
-
-      // Catch only after grace
-      if (Math.hypot(monster.x - player.x, monster.y - player.y) < 0.45) {
-        dead = true;
-        finalTime.textContent = elapsed.toFixed(1);
-        setGameOver(true);
-      }
-    } else {
-      monster.spotted = false;
-    }
-
-    // Camera follows player
-    const worldW = MAP_W * TILE * pixel;
-    const worldH = MAP_H * TILE * pixel;
-    const px = player.x * TILE * pixel;
-    const py = player.y * TILE * pixel;
-    cam.x = px - W / 2;
-    cam.y = py - H / 2;
-    cam.x = Math.max(0, Math.min(worldW - W, cam.x));
-    cam.y = Math.max(0, Math.min(worldH - H, cam.y));
-  }
-
-function draw() {
-  ctx.clearRect(0, 0, W, H);
-
-  // --- Draw world (brighter palette) ---
-  const startX = Math.max(0, Math.floor((cam.x / (TILE * pixel)) - 2));
-  const startY = Math.max(0, Math.floor((cam.y / (TILE * pixel)) - 2));
-  const endX = Math.min(MAP_W, Math.ceil(((cam.x + W) / (TILE * pixel)) + 2));
-  const endY = Math.min(MAP_H, Math.ceil(((cam.y + H) / (TILE * pixel)) + 2));
-
-  for (let ty = startY; ty < endY; ty++) {
-    for (let tx = startX; tx < endX; tx++) {
-      const v = map[ty][tx];
-      const sx = tx * TILE * pixel - cam.x;
-      const sy = ty * TILE * pixel - cam.y;
-
-      // Brighter floor
-      ctx.fillStyle = '#1b2b42';               // was #0c1220
-      ctx.fillRect(sx, sy, TILE * pixel, TILE * pixel);
-
-      if (v === 1) {
-        // Brighter walls
-        ctx.fillStyle = '#233a57';             // was #0a0f18
-        ctx.fillRect(sx, sy, TILE * pixel, TILE * pixel);
-        ctx.fillStyle = '#3b577a';             // was #101b2c
-        ctx.fillRect(sx, sy, TILE * pixel, 2 * pixel);
-      } else if (v === 2) {
-        // Switch
-        ctx.fillStyle = '#2b3f5c';
-        ctx.fillRect(sx, sy, TILE * pixel, TILE * pixel);
-        ctx.fillStyle = '#ffd34d';
-        ctx.fillRect(sx + 3 * pixel, sy + 3 * pixel, 2 * pixel, 2 * pixel);
-      }
-    }
-  }
-
-  // Lamps (bright cyan)
-  for (const l of lamps) {
-    const sx = l.x * TILE * pixel - cam.x;
-    const sy = l.y * TILE * pixel - cam.y;
-    ctx.fillStyle = l.on ? '#9cf7ff' : '#314863';
-    ctx.fillRect(sx + 3 * pixel, sy + 3 * pixel, 2 * pixel, 2 * pixel);
-  }
-
-  // Subtle player glow (purely visual, not a darkness mask)
-  const px = player.x * TILE * pixel - cam.x;
-  const py = player.y * TILE * pixel - cam.y;
-  ctx.save();
-  const g = ctx.createRadialGradient(px, py, 0, px, py, 220);
-  g.addColorStop(0, 'rgba(180,230,255,0.6)');
-  g.addColorStop(1, 'rgba(180,230,255,0)');
-  ctx.fillStyle = g;
-  ctx.beginPath();
-  ctx.arc(px, py, 220, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
-
-  // Monster
-  drawPixelChar(monster.x, monster.y, '#243040', '#000000', 0.6);
-
-  // Player
-  drawPixelChar(player.x, player.y, '#c2e8ff', '#8ee6ff', 1.0);
-
-  // Tiny white dot at player center (helps spotting)
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(px - 2, py - 2, 4, 4);
-
-  // Light red tint when spotted
-  if (monster.spotted) {
-    ctx.fillStyle = 'rgba(255,77,109,0.06)';
-    ctx.fillRect(0, 0, W, H);
-  }
+for (let i=0;i<OB_COUNT;i++){
+  const b = new THREE.Mesh(boxGeo, obMat.clone());
+  resetObstacle(b, true);
+  scene.add(b);
+  obstacles.push({ mesh:b, r:0.7 });
 }
 
+function resetObstacle(b, initial=false){
+  const sx = rand(0.4, 1.2), sy = rand(0.4, 1.2), sz = rand(0.4, 1.2);
+  b.scale.set(sx, sy, sz);
+  b.material.emissive = new THREE.Color(0x112233);
+  b.position.x = rand(-CW/2 + 0.5, CW/2 - 0.5);
+  b.position.y = rand(-CH/2 + 0.5, CH/2 - 0.5);
+  const ahead = initial ? rand(8, 90) : rand(40, 90);
+  b.position.z = -ahead;
+  b.rotation.set(rand(0,Math.PI), rand(0,Math.PI), rand(0,Math.PI));
+}
 
-  function drawPixelChar(cx, cy, body, accent, pulse = 1) {
-    const x = cx * TILE * pixel - cam.x;
-    const y = cy * TILE * pixel - cam.y;
-    const s = Math.max(1, Math.floor(TILE * pixel * 0.75));
-    ctx.fillStyle = body;
-    ctx.fillRect(x + s*0.25, y + s*0.10, s*0.5, s*0.65); // body
-    ctx.fillRect(x + s*0.30, y + s*0.00, s*0.4, s*0.25); // head
-    ctx.fillStyle = accent;
-    ctx.fillRect(x + s*0.42, y + s*0.07, Math.max(1, s*0.12), Math.max(1, s*0.12)); // eye
-    ctx.fillStyle = '#0a0f18';
-    ctx.fillRect(x + s*0.28, y + s*0.78, s*0.16, s*0.08); // feet
-    ctx.fillRect(x + s*0.56, y + s*0.78, s*0.16, s*0.08);
+let running = false, dead = false;
+let t0 = performance.now(), elapsed = 0, score = 0;
+let speed = 8;  // world scroll speed (units/sec)
+let driftX = 0, driftY = 0; // input deltas
+
+// Touch/mouse drag to move
+let dragging = false, lastX=0, lastY=0;
+const sensitivity = 0.012;
+function onDown(e){
+  dragging = true;
+  const p = point(e);
+  lastX = p.x; lastY = p.y;
+}
+function onMove(e){
+  if(!dragging) return;
+  const p = point(e);
+  driftX += (p.x - lastX) * sensitivity;
+  driftY -= (p.y - lastY) * sensitivity;
+  lastX = p.x; lastY = p.y;
+}
+function onUp(){ dragging = false; }
+function point(e){
+  if (e.touches && e.touches[0]) return { x:e.touches[0].clientX, y:e.touches[0].clientY };
+  return { x:e.clientX, y:e.clientY };
+}
+addEventListener('touchstart', onDown, {passive:false});
+addEventListener('touchmove', onMove, {passive:false});
+addEventListener('touchend', onUp, {passive:true});
+addEventListener('mousedown', onDown);
+addEventListener('mousemove', onMove);
+addEventListener('mouseup', onUp);
+
+// Pause/overlays
+function setOverlay(show){ overlay.hidden = !show; running = !show && !dead; }
+function setOver(show){ gameover.hidden = !show; if(show) running = false; }
+pauseBtn.onclick = () => setOverlay(true);
+resumeBtn.onclick = () => setOverlay(false);
+restartBtn.onclick = () => location.reload();
+againBtn.onclick = () => location.reload();
+
+// Start unpaused on first interaction
+setOverlay(false);
+
+function resize(){
+  W = innerWidth; H = innerHeight; dpr = Math.min(2, devicePixelRatio||1);
+  renderer.setPixelRatio(dpr); renderer.setSize(W, H);
+  camera.aspect = W/H; camera.updateProjectionMatrix();
+}
+addEventListener('resize', resize, {passive:true});
+
+function clamp(v, a, b){ return Math.max(a, Math.min(b, v)); }
+
+// Main loop
+function loop(now){
+  const dt = Math.min(0.033, (now - t0)/1000); t0 = now;
+  if (running && !dead){
+    elapsed += dt;
+    score += dt * 100; // basic score
+    timeEl.textContent = elapsed.toFixed(1);
+    scoreEl.textContent = Math.floor(score);
+
+    // move player by drift with easing
+    ship.position.x = clamp(ship.position.x + driftX, -CW/2+0.6, CW/2-0.6);
+    ship.position.y = clamp(ship.position.y + driftY, -CH/2+0.6, CH/2-0.6);
+    driftX *= 0.85; driftY *= 0.85;
+    shipGlow.position.copy(ship.position);
+    headLight.position.set(ship.position.x, ship.position.y+0.4, ship.position.z+0.8);
+
+    // scroll world: obstacles move toward camera
+    const zStop = camera.position.z + 0.5;
+    for (const o of obstacles){
+      o.mesh.position.z += speed * dt;
+      o.mesh.rotation.x += 0.2*dt; o.mesh.rotation.y += 0.15*dt;
+
+      // recycle when past camera
+      if (o.mesh.position.z > zStop) resetObstacle(o.mesh);
+
+      // collision (sphere vs box approximated as sphere)
+      const dx = o.mesh.position.x - ship.position.x;
+      const dy = o.mesh.position.y - ship.position.y;
+      const dz = o.mesh.position.z - ship.position.z;
+      if ((dx*dx + dy*dy + dz*dz) < (o.r + 0.35) ** 2){
+        dead = true;
+        finalTime.textContent = elapsed.toFixed(1);
+        finalScore.textContent = Math.floor(score);
+        setOver(true);
+      }
+    }
+
+    // slight speed ramp
+    speed = Math.min(16, speed + 0.05*dt);
   }
 
-  function radialHole(wx, wy, radiusPixels, hard = 1) {
-    const x = wx * TILE * pixel - cam.x;
-    const y = wy * TILE * pixel - cam.y;
-    const g = ctx.createRadialGradient(x, y, 0, x, y, radiusPixels);
-    g.addColorStop(0, 'rgba(255,255,255,1)');
-    g.addColorStop(0.6, `rgba(255,255,255,${0.45*hard})`);
-    g.addColorStop(1, 'rgba(255,255,255,0)');
-    ctx.fillStyle = g;
-    ctx.beginPath();
-    ctx.arc(x, y, radiusPixels, 0, Math.PI*2);
-    ctx.fill();
-  }
-
-  // Prevent iOS two-finger pinch scroll
-  document.addEventListener('gesturestart', e => e.preventDefault());
-
-  // If the tab goes background, just pause (not game over)
-// If the tab goes background, pause (but not during initial load)
-document.addEventListener('visibilitychange', () => {
-  if (document.hidden && !dead && elapsed > 0.5) setOverlay(true);
-});
-
-})();
+  renderer.render(scene, camera);
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
