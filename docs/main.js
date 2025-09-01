@@ -353,26 +353,33 @@ player.battery = Math.max(0, player.battery - 0.01 * dt);  // ← 5× slower
     drawPixelChar(player.x, player.y, '#a8dbff', '#71e1ff', 1.0);
 
     // Darkness mask (brighter than before)
-    ctx.save();
-    ctx.globalCompositeOperation = 'source-over';
-    ctx.fillStyle = 'rgba(0,0,0,0.25)'; // was 0.80
-    ctx.fillRect(0, 0, W, H);
+    // --- Darkness mask (skipped in Bright Mode) ---
+if (!devBrightMode) {
+  ctx.save();
+  ctx.globalCompositeOperation = 'source-over';
+  // very light ambient even when darkness is on
+  ctx.fillStyle = 'rgba(0,0,0,0.15)';
+  ctx.fillRect(0, 0, W, H);
 
-    // Cut light holes
-    ctx.globalCompositeOperation = 'destination-out';
+  // punch holes for player + lamps
+  ctx.globalCompositeOperation = 'destination-out';
 
-    // Player light
-    const baseR = player.radius * TILE * pixel;
-const lightR = Math.max(300, baseR * (1.0 + player.battery * 0.6));
+  const baseR = player.radius * TILE * pixel;
+  const lightR = Math.max(400, baseR * 1.4);   // big flashlight
+  radialHole(player.x, player.y, lightR, 1.0);
 
-    radialHole(player.x, player.y, lightR, 0.85);
+  for (const l of lamps) if (l.on) radialHole(l.x + 0.5, l.y + 0.5, 300, 1.0);
+  ctx.restore();
+}
 
-    // Lamp lights
-    for (const l of lamps) {
-      if (!l.on) continue;
-radialHole(l.x + 0.5, l.y + 0.5, 260, 1.0);  // ← bigger lamp glow
-    }
-    ctx.restore();
+// Always draw a bright marker at the player (helps if you later turn darkness back on)
+{
+  const px = player.x * TILE * pixel - cam.x;
+  const py = player.y * TILE * pixel - cam.y;
+  ctx.fillStyle = 'white';
+  ctx.fillRect(px - 2, py - 2, 4, 4);
+}
+
 
     if (monster.spotted) {
       ctx.fillStyle = 'rgba(255,77,109,0.08)';
