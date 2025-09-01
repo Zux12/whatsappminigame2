@@ -25,6 +25,18 @@
   const stickBase = document.getElementById('stick-base');
   const stickKnob = document.getElementById('stick-knob');
 
+   // --- DEV BRIGHT MODE (default ON so you can see immediately) ---
+let devBrightMode = true; // start bright
+// toggle with B (desktop) — optional
+window.addEventListener('keydown', (e) => {
+  if (e.key.toLowerCase() === 'b') {
+    devBrightMode = !devBrightMode;
+    localStorage.setItem('devBrightMode', devBrightMode ? '1' : '0');
+  }
+});
+// restore last choice
+devBrightMode = (localStorage.getItem('devBrightMode') === '1') || devBrightMode;
+
 
   // Pixel grid scale
   let W = 0, H = 0;
