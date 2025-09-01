@@ -60,7 +60,7 @@ function makeCorridor(){
   function seg(z){
     const mesh = new THREE.Mesh(
       new THREE.BoxGeometry(width,height,length),
-      new THREE.MeshStandardMaterial({ color:0x0f1724, roughness:.95, metalness:.05 })
+      new THREE.MeshStandardMaterial({ color:0x0f1724, roughness:.95, metalness:.05, side: THREE.BackSide })
     );
     mesh.position.z = z; return mesh;
   }
@@ -73,10 +73,16 @@ function makeCorridor(){
     const r = box.clone(); r.position.x = width*.5-.05; ribs.add(r);
   }
   g.add(ribs);
-  g.tick = (dz)=>{
-    for(const s of g.userData.segments){ s.position.z += dz; if(s.position.z>camera.position.z+length*.5) s.position.z -= length*2; }
-    for(const r of ribs.children){ r.position.z += dz; if(r.position.z>camera.position.z+1) r.position.z -= 24*1.2; }
-  };
+g.tick = (dz)=>{
+  for(const s of g.userData.segments){
+    s.position.z -= dz;
+    if(s.position.z < camera.position.z - length*1.5) s.position.z += length*2;
+  }
+  for(const r of ribs.children){
+    r.position.z -= dz;
+    if(r.position.z < camera.position.z - 1) r.position.z += 24*1.2;
+  }
+};
   return g;
 }
 const corridor = makeCorridor(); scene.add(corridor);
@@ -228,7 +234,7 @@ function resetGame(){
   for(let i=0;i<6;i++) spawnMeteor(-8 - i*3);
   ship.position.set(0,0,0); input.tx=input.ty=0;
 }
-if (pauseBtn) pauseBtn.addEventListener('click', ()=>setPaused(!(overlay && overlay.hidden)));
+if (pauseBtn) pauseBtn.addEventListener('click', ()=> setPaused(!running));
 if (resumeBtn) resumeBtn.addEventListener('click', ()=>setPaused(false));
 if (restartBtn) restartBtn.addEventListener('click', ()=>{ resetGame(); setPaused(false); });
 if (againBtn) againBtn.addEventListener('click', ()=>{ if(gameover) gameover.hidden=true; resetGame(); setPaused(false); });
