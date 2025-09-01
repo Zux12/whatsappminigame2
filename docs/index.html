@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
+  <title>Shadow Tag — Tiny Pixel</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64'%3E%3Crect width='64' height='64' fill='%23000'/%3E%3Ccircle cx='20' cy='20' r='6' fill='%23fff'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="./styles.css" />
+  <meta name="theme-color" content="#0b0f14" />
+</head>
+<body>
+  <div id="ui">
+    <div class="hud">
+      <div class="hud-item">⏱️ <span id="time">0.0</span>s</div>
+      <div class="hud-item">🔦 <span id="battery">100%</span></div>
+      <div class="hud-item">💨 <span id="stamina">100%</span></div>
+      <button id="pauseBtn" class="btn">⏸</button>
+    </div>
+
+    <!-- Virtual joystick (bottom-left) -->
+    <div id="stick">
+      <div id="stick-base"></div>
+      <div id="stick-knob"></div>
+    </div>
+
+    <!-- Action button (bottom-right) -->
+    <button id="actionBtn" class="btn action">⏺</button>
+
+    <!-- Pause overlay -->
+    <div id="overlay" hidden>
+      <div class="panel">
+        <h1>Paused</h1>
+        <p>Use the joystick to move. Tap ⏺ to interact (lamps/switches).</p>
+        <div class="row">
+          <button id="resumeBtn" class="btn big">Resume</button>
+          <button id="restartBtn" class="btn">Restart</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Game over -->
+    <div id="gameover" hidden>
+      <div class="panel">
+        <h1>Caught!</h1>
+        <p>Time survived: <strong id="finalTime">0.0</strong>s</p>
+        <button id="againBtn" class="btn big">Play Again</button>
+      </div>
+    </div>
+  </div>
+
+  <canvas id="game" aria-label="game canvas"></canvas>
+  <script src="./main.js"></script>
+</body>
+</html>
