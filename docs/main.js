@@ -11,7 +11,7 @@ window.addEventListener('unhandledrejection', (e)=>showErr((e.reason&&e.reason.m
 
 // Unhide start overlay immediately so we always see a UI even if something fails later
 const overlay = document.getElementById('overlay'); // exists per your HTML
-if (overlay) overlay.hidden = false; // show “Play” panel ASAP :contentReference[oaicite:1]{index=1}
+if (overlay) overlay.hidden = false; // show “Play” panel ASAP
 
 // ------------ CDN imports ------------
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
@@ -20,9 +20,9 @@ import { RenderPass } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/
 import { UnrealBloomPass } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/postprocessing/UnrealBloomPass.js';
 
 // ------------ DOM hooks (match your index.html HUD/controls) ------------
-const timeEl = document.getElementById('time');    // ⏱ HUD :contentReference[oaicite:2]{index=2}
-const scoreEl = document.getElementById('score');  // 🏁 HUD :contentReference[oaicite:3]{index=3}
-const pauseBtn = document.getElementById('pause'); // pause button :contentReference[oaicite:4]{index=4}
+const timeEl = document.getElementById('time');    // ⏱ HUD
+const scoreEl = document.getElementById('score');  // 🏁 HUD
+const pauseBtn = document.getElementById('pause'); // pause button
 const resumeBtn = document.getElementById('resume');
 const restartBtn = document.getElementById('restart');
 const gameover = document.getElementById('gameover');
