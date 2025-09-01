@@ -20,10 +20,10 @@ renderer.setClearColor(0x0a0f18, 1);
 document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-scene.fog = new THREE.Fog(0x0a0f18, 8, 32);
+scene.fog = new THREE.Fog(0x0a0f18, 8, 36);
 
 const camera = new THREE.PerspectiveCamera(60, W/H, 0.1, 100);
-camera.position.set(0, 0, 6);
+camera.position.set(0, 0, 0);
 
 const ambient = new THREE.AmbientLight(0x88aaff, 0.5);
 scene.add(ambient);
@@ -51,11 +51,12 @@ const shipGeo = new THREE.ConeGeometry(0.25, 0.6, 12);
 shipGeo.rotateX(Math.PI/2);
 const shipMat = new THREE.MeshStandardMaterial({ color:0x8ee6ff, emissive:0x2ad8ff, emissiveIntensity:0.6, metalness:0.2, roughness:0.4 });
 const ship = new THREE.Mesh(shipGeo, shipMat);
-ship.position.set(0, 0, 4.6);
+ship.position.set(0, 0, -4.6);
 scene.add(ship);
 
-const shipGlow = new THREE.Mesh(new THREE.SphereGeometry(0.32, 16, 16),
-                                new THREE.MeshBasicMaterial({ color:0x8ee6ff, transparent:true, opacity:0.15 }));
+const shipGlow = new THREE.Mesh(new THREE.SphereGeometry(0.28, 16, 16),
+                                new THREE.MeshBasicMaterial({ color:0x8ee6ff, transparent:true, opacity:0.10 }));
+
 shipGlow.position.copy(ship.position);
 scene.add(shipGlow);
 
