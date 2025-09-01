@@ -35,6 +35,18 @@
   </div>
 
   <!-- main script imports Three.js as an ES module -->
-  <script type="module" src="./game.js?v=1"></script>
+<!-- Import map to resolve any bare 'three' imports -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/examples/jsm/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<!-- Load the minimal test module -->
+<script type="module" src="./game.js?v=1"></script>
+
 </body>
 </html>
