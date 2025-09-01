@@ -16,6 +16,11 @@ body {
   overflow: hidden;
 }
 
+
+
+/* Put this near the top or with the #game and #ui rules */
+
+/* Canvas should be underneath */
 #game {
   position: fixed;
   inset: 0;
@@ -23,7 +28,16 @@ body {
   height: 100vh;
   touch-action: none;
   background: radial-gradient(1200px 800px at 50% 50%, #0e1520 20%, #06090d 70%, #030507 100%);
+  z-index: 0;              /* <-- add this */
 }
+
+/* UI should be on top */
+#ui {
+  position: fixed;          /* <-- add this */
+  inset: 0;                 /* <-- add this */
+  z-index: 10;              /* <-- add this */
+}
+
 
 /* HUD */
 .hud {
